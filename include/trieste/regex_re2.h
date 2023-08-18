@@ -193,4 +193,11 @@ namespace trieste
         << loc.str() << std::endl;
     return {};
   }
+
+  using Regex = RE2;
+
+  static inline bool full_match(const std::string_view& sv, const Regex& regex)
+  {
+    return RE2::FullMatch(sv, regex);
+  }
 }

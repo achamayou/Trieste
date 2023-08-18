@@ -4,58 +4,105 @@
 
 #include "source.h"
 
+extern "C" {
 #include <libregexp.h>
+}
+
+#include <string_view>
+#include <charconv>
+
+#define CAPTURE_COUNT_MAX 255 // TODO: is this enough?
 
 namespace trieste
 {
-  class REMatch
+  class QJSRE
   {
-    friend class REIterator;
+    friend class QJSREMatch;
+
+    private:
+      const uint8_t* bytecode;
+      int bytecode_size;
+
+    public:
+      QJSRE(const std::string& regex) {
+        int error_msg_size = 64;
+        char error_msg[64];
+        
+        int flags = LRE_FLAG_STICKY; // Same as RE2::ANCHOR_START
+        bytecode = lre_compile(&bytecode_size,
+                               error_msg,
+                               error_msg_size,
+                               regex.c_str(),
+                               regex.size(),
+                               flags,
+                               nullptr);
+        if (bytecode == nullptr) {
+          throw std::runtime_error(error_msg);
+        }
+      }
+
+      ~QJSRE() {
+        free((void*)bytecode);
+      }
+  };
+
+  class QJSREMatch
+  {
+    friend class QJSREIterator;
 
   private:
-    std::vector<re2::StringPiece> match;
     std::vector<Location> locations;
     size_t matches = 0;
+    uint8_t ** capture; // TODO: needs freeing
+    std::vector<std::string_view> match_svs; // TODO: this seems redundant with locations
 
-    bool match_regexp(const RE2& regex, re2::StringPiece& sp, Source& source)
-    {
-      matches = regex.NumberOfCapturingGroups() + 1;
-
-      if (match.size() < matches)
-        match.resize(matches);
-
-      if (locations.size() < matches)
-        locations.resize(matches);
-
-      auto matched = regex.Match(
-        sp,
-        0,
-        sp.length(),
-        re2::RE2::ANCHOR_START,
-        match.data(),
-        static_cast<int>(matches));
-
-      if (!matched || (match.at(0).size() == 0))
-      {
-        return false;
-      }
-
-      for (size_t i = 0; i < matches; i++)
-      {
-        locations[i] = {
-          source,
-          static_cast<size_t>(match.at(i).data() - source->view().data()),
-          match.at(i).size()};
-      }
-
-      return true;
-    }
 
   public:
-    REMatch(size_t max_capture = 0)
+    bool match_regexp(const QJSRE& regex, std::string_view& sp, Source& source)
     {
-      match.resize(max_capture + 1);
-      locations.resize(max_capture + 1);
+      size_t capture_count = lre_get_capture_count(regex.bytecode);
+      capture = (uint8_t **) (sizeof(capture[0]) * capture_count * 2);
+      const uint8_t* sp_data = reinterpret_cast<const uint8_t*>(sp.data());
+      int matched_ = lre_exec(capture, regex.bytecode, sp_data, 0, sp.size(), 0, nullptr);
+      if (matched_ < 0)
+        throw std::logic_error("lre_exec failed");
+      size_t matched = static_cast<size_t>(matched_);
+      matches = matched;
+
+      if (matched < locations.size())
+      {
+        locations.resize(matched);
+      }
+      if (matched < match_svs.size())
+      {
+        match_svs.resize(matched);
+      }
+
+      for (size_t i = 0; i < matched; i++)
+      {
+        const uint8_t* start = capture[i * 2];
+        const uint8_t* end = capture[i * 2 + 1];
+        locations[i] = {
+          source,
+          (size_t)((const char*)start - source->view().data()),
+          (size_t)(end - start)};
+        match_svs[i] = std::string_view((const char*)start, (const char*)end);
+      }
+      // TODO: How does RE2 work, and why is there a +1? Is it implicitly the whole string at the beginning/end?
+
+      return matched > 0;
+    }
+
+    bool match(const std::string_view& sv, const QJSRE& regex)
+    {
+      const uint8_t* sv_data = reinterpret_cast<const uint8_t*>(sv.data());
+      return lre_exec(capture, regex.bytecode, sv_data, 0, sv.size(), 0, nullptr);
+    }
+
+    QJSREMatch(size_t max_capture = 0)
+    {
+      locations.resize(max_capture);
+      match_svs.resize(max_capture);
     }
 
     const Location& at(size_t index = 0) const
@@ -73,28 +120,28 @@ namespace trieste
         return T();
 
       T t;
-      RE2::Arg arg(&t);
-      auto& m = match.at(index);
-      arg.Parse(m.data(), m.size());
+      auto& m = match_svs.at(index);
+      std::from_chars(m.data(), m.data() + m.size(), t);
       return t;
     }
   };
 
-  class REIterator
+
+  class QJSREIterator
   {
   private:
     Source source;
-    re2::StringPiece sp;
+    std::string_view sp;
 
   public:
-    REIterator(Source source) : source(source), sp(source->view()) {}
+    QJSREIterator(Source source) : source(source), sp(source->view()) {}
 
     bool empty()
     {
       return sp.empty();
     }
 
-    bool consume(const RE2& regex, REMatch& m)
+    bool consume(const QJSRE& regex, QJSREMatch& m)
     {
       if (!m.match_regexp(regex, sp, source))
         return false;
@@ -117,13 +164,14 @@ namespace trieste
 
   inline Node build_ast(Source source, size_t pos, std::ostream& out)
   {
-    auto hd = RE2("[[:space:]]*\\([[:space:]]*([^[:space:]\\(\\)]*)");
-    auto st = RE2("[[:space:]]*\\{[^\\}]*\\}");
-    auto id = RE2("[[:space:]]*([[:digit:]]+):");
-    auto tl = RE2("[[:space:]]*\\)");
+    // TODO: convert space and digit to \s and \d probably but check they're really the same
+    auto hd = QJSRE("[[:space:]]*\\([[:space:]]*([^[:space:]\\(\\)]*)");
+    auto st = QJSRE("[[:space:]]*\\{[^\\}]*\\}");
+    auto id = QJSRE("[[:space:]]*([[:digit:]]+):");
+    auto tl = QJSRE("[[:space:]]*\\)");
 
-    REMatch re_match(2);
-    REIterator re_iterator(source);
+    QJSREMatch re_match(2);
+    QJSREIterator re_iterator(source);
     re_iterator.skip(pos);
 
     Node top;
@@ -192,5 +240,15 @@ namespace trieste
     out << loc.origin_linecol() << "incomplete AST" << std::endl
         << loc.str() << std::endl;
     return {};
+  }
+
+  using Regex = QJSRE;
+  using REMatch = QJSREMatch;
+  using REIterator = QJSREIterator;
+
+  static inline bool full_match(const std::string_view& sv, const Regex& regex)
+  {
+    QJSREMatch m;
+    return m.match(sv, regex);
   }
 }

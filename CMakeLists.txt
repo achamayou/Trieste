@@ -52,8 +52,10 @@ if (TRIESTE_USE_QUICKJS_REGEXP)
   FetchContent_MakeAvailable(quickjs)
 
   set(QUICKJS_RE_SRC
+    ${quickjs_SOURCE_DIR}/cutils.c
     ${quickjs_SOURCE_DIR}/libunicode.c
     ${quickjs_SOURCE_DIR}/libregexp.c
+    src/qjsshim.c
   )
   add_library(qjsre STATIC ${QUICKJS_RE_SRC})
   execute_process(
@@ -104,7 +106,7 @@ target_link_libraries(trieste
 )
 
 if (TRIESTE_USE_QUICKJS_REGEXP)
-  target_compile_definitions(trieste INTERFACE TRIESTE_USE_QUICKJS_REGEXP)
+  target_compile_definitions(trieste INTERFACE TRIESTE_REGEX_IMPL_QJSRE)
 endif()
 
 target_compile_features(trieste INTERFACE cxx_std_20)

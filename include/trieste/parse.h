@@ -23,7 +23,7 @@ namespace trieste
       friend class trieste::Parse;
 
     private:
-      RE2 regex;
+      Regex regex;
       ParseEffect effect;
 
     public:

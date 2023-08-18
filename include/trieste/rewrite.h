@@ -127,7 +127,7 @@ namespace trieste
     {
     private:
       Token type;
-      RE2 regex;
+      Regex regex;
 
     public:
       RegexMatch(const Token& type, const std::string& r) : type(type), regex(r)
@@ -138,7 +138,7 @@ namespace trieste
         if ((it == end) || ((*it)->type() != type))
           return false;
 
-        if (!RE2::FullMatch((*it)->location().view(), regex))
+        if (!full_match((*it)->location().view(), regex))
           return false;
 
         ++it;
