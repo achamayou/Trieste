@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14.0)
-project(trieste VERSION 1.0.0 LANGUAGES CXX)
+project(trieste VERSION 1.0.0 LANGUAGES CXX C)
 
 include(FetchContent)
 
@@ -49,8 +49,27 @@ if (TRIESTE_USE_QUICKJS_REGEXP)
     GIT_TAG 2788d71e823b522b178db3b3660ce93689534e6d
     GIT_SHALLOW TRUE
   )
-
   FetchContent_MakeAvailable(quickjs)
+
+  set(QUICKJS_RE_SRC
+    ${quickjs_SOURCE_DIR}/libunicode.c
+    ${quickjs_SOURCE_DIR}/libregexp.c
+  )
+  add_library(qjsre STATIC ${QUICKJS_RE_SRC})
+  execute_process(
+    COMMAND cat "${quickjs_SOURCE_DIR}/VERSION"
+    OUTPUT_VARIABLE QUICKJS_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+  target_compile_options(qjsre
+    PRIVATE -DCONFIG_VERSION="${QUICKJS_VERSION}" -DCONFIG_BIGNUM
+  )
+  target_include_directories(
+    qjsre PUBLIC $<BUILD_INTERFACE:${quickjs_SOURCE_DIR}>
+                $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+  )
+
+  message(STATUS "Using QuickJS version ${QUICKJS_VERSION} for regexp matching at ${quickjs_SOURCE_DIR}")
 endif()
 
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
@@ -68,10 +87,17 @@ target_include_directories(trieste
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
+set(TRIESTE_REGEXP_LIB re2)
+set(TRIESTE_REGEXP_TARGET re2::re2)
+if (TRIESTE_USE_QUICKJS_REGEXP)
+  set(TRIESTE_REGEXP_LIB qjsre)
+  set(TRIESTE_REGEXP_TARGET qjsre)
+endif()
+
 target_link_libraries(trieste
   INTERFACE
   snmallocshim-static
-  re2::re2
+  ${TRIESTE_REGEXP_TARGET}
   CLI11::CLI11
 )
 
@@ -97,7 +123,7 @@ install(CODE [[
   file(REMOVE_RECURSE ${CMAKE_INSTALL_PREFIX}/.)
   ]])
 
-install(TARGETS trieste snmallocshim-static snmalloc re2 CLI11
+install(TARGETS trieste snmallocshim-static snmalloc ${TRIESTE_REGEXP_LIB} CLI11
   EXPORT ${PROJECT_NAME}_Targets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
