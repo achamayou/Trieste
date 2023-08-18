@@ -40,6 +40,18 @@ FetchContent_MakeAvailable(cli11)
 # #############################################
 # Options
 option(TRIESTE_BUILD_SAMPLES "Specifies whether to build the samples" ON)
+option(TRIESTE_USE_QUICKJS_REGEXP "Specifies whether to use QuickJS for regexp matching" OFF)
+
+if (TRIESTE_USE_QUICKJS_REGEXP)
+  FetchContent_Declare(
+    quickjs
+    GIT_REPOSITORY https://github.com/bellard/quickjs
+    GIT_TAG 2788d71e823b522b178db3b3660ce93689534e6d
+    GIT_SHALLOW TRUE
+  )
+
+  FetchContent_MakeAvailable(quickjs)
+endif()
 
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 
