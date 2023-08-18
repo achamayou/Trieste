@@ -87,11 +87,13 @@ target_include_directories(trieste
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
+set(TRIESTE_REGEX_IMPL re2)
 set(TRIESTE_REGEXP_LIB re2)
 set(TRIESTE_REGEXP_TARGET re2::re2)
 if (TRIESTE_USE_QUICKJS_REGEXP)
   set(TRIESTE_REGEXP_LIB qjsre)
   set(TRIESTE_REGEXP_TARGET qjsre)
+  set(TRIESTE_REGEX_IMPL qjsre)
 endif()
 
 target_link_libraries(trieste
@@ -100,6 +102,10 @@ target_link_libraries(trieste
   ${TRIESTE_REGEXP_TARGET}
   CLI11::CLI11
 )
+
+if (TRIESTE_USE_QUICKJS_REGEXP)
+  target_compile_definitions(trieste INTERFACE TRIESTE_USE_QUICKJS_REGEXP)
+endif()
 
 target_compile_features(trieste INTERFACE cxx_std_20)
 
