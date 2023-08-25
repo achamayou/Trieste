@@ -53,7 +53,7 @@ namespace trieste
   private:
     std::vector<Location> locations;
     size_t matches = 0;
-    uint8_t ** capture; // TODO: needs freeing
+    uint8_t ** capture; // TODO: probably a vector of uint8_t* instead
     std::vector<std::string_view> match_svs; // TODO: this seems redundant with locations
 
   public:
