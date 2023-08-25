@@ -11,7 +11,7 @@ extern "C" {
 #include <string_view>
 #include <charconv>
 
-#define CAPTURE_COUNT_MAX 255 // TODO: is this enough?
+// Disclaimer: this is entirely untested and made up, and almost certainly explodes
 
 namespace trieste
 {
@@ -56,7 +56,6 @@ namespace trieste
     uint8_t ** capture; // TODO: needs freeing
     std::vector<std::string_view> match_svs; // TODO: this seems redundant with locations
 
-
   public:
     bool match_regexp(const QJSRE& regex, std::string_view& sp, Source& source)
     {
@@ -80,6 +79,7 @@ namespace trieste
 
       for (size_t i = 0; i < matched; i++)
       {
+        // TODO: needs NULL checks here, the captures can be empty it seems
         const uint8_t* start = capture[i * 2];
         const uint8_t* end = capture[i * 2 + 1];
         locations[i] = {
